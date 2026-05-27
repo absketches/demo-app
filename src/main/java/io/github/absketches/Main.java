@@ -14,7 +14,7 @@ public class Main {
     public static void main(String[] args) {
         final Nano nano = new Nano(Map.of(
                 CONFIG_LOG_LEVEL, ALL,
-                CONFIG_LOG_FORMATTER, "json", // or "console"
+                CONFIG_LOG_FORMATTER, "console", // or "json"
                 CONFIG_SERVICE_HTTP_PORT, "8080" // or any other port
         ),
                 new MetricService(),

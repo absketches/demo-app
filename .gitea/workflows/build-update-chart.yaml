@@ -1,0 +1,76 @@
+name: Release & Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release-build-push:
+    if: "!contains(gitea.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout app repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.APP_REPO_TOKEN }}
+
+      - name: Set project version
+        id: version
+        run: |
+          project_version="$(date -u '+%Y.%m.%j%H%M')"
+
+          mvn versions:set \
+            -DnewVersion="${project_version}" \
+            -DgenerateBackupPoms=false \
+            -B \
+            -q
+
+          echo "project_version=${project_version}" >> "$GITHUB_OUTPUT"
+          echo "PROJECT_VERSION=${project_version}" >> "$GITHUB_ENV"
+
+      - name: Commit version bump
+        run: |
+          git config user.name "gitea-actions"
+          git config user.email "gitea-actions@gitea.local"
+          git add pom.xml
+          git commit -m "Release ${PROJECT_VERSION} [skip ci]"
+          git push origin main
+
+      - name: Login to Harbor
+        run: |
+          echo "${{ secrets.HARBOR_PASSWORD }}" | docker login host.docker.internal:8088 \
+            -u "${{ secrets.HARBOR_USERNAME }}" \
+            --password-stdin
+
+      - name: Build image
+        run: |
+          docker build \
+            -t host.docker.internal:8088/demo/demo-app:${PROJECT_VERSION} \
+            -t host.docker.internal:8088/demo/demo-app:latest \
+            .
+
+      - name: Push image
+        run: |
+          docker push host.docker.internal:8088/demo/demo-app:${PROJECT_VERSION}
+          docker push host.docker.internal:8088/demo/demo-app:latest
+
+      - name: Checkout platform repo
+        run: |
+          git clone http://${{ secrets.PLATFORM_REPO_USERNAME }}:${{ secrets.PLATFORM_REPO_TOKEN }}@host.docker.internal:3000/basuabhi/platform-bgp-lab.git platform-bgp-lab
+
+      - name: Update Helm image tag
+        working-directory: platform-bgp-lab
+        run: |
+          sed -i.bak "s/tag: \".*\"/tag: \"${PROJECT_VERSION}\"/" demo/demo-app-chart/values.yaml
+          rm demo/demo-app-chart/values.yaml.bak
+
+      - name: Commit and push chart update
+        working-directory: platform-bgp-lab
+        run: |
+          git config user.name "gitea-actions"
+          git config user.email "gitea-actions@gitea.local"
+          git add demo/demo-app-chart/values.yaml
+          git commit -m "Deploy demo-app ${PROJECT_VERSION} [skip ci]"
+          git push origin main
