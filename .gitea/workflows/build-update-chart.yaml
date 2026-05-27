@@ -16,38 +16,49 @@ jobs:
         with:
           token: ${{ secrets.APP_REPO_TOKEN }}
 
+      - name: Install Maven
+        run: |
+          apt-get update
+          apt-get install -y maven
+
       - name: Set project version
         id: version
+        shell: bash
         run: |
           project_version="$(date -u '+%Y.%m.%j%H%M')"
 
-          docker run --rm \
-            -v "$PWD:/workspace" \
-            -w /workspace \
-            maven:3.9.9-amazoncorretto-21 \
-            mvn versions:set \
-              -DnewVersion="${project_version}" \
-              -DgenerateBackupPoms=false \
-              -B
+          mvn versions:set \
+            -DnewVersion="${project_version}" \
+            -DgenerateBackupPoms=false \
+            -B
 
           echo "project_version=${project_version}" >> "$GITHUB_OUTPUT"
           echo "PROJECT_VERSION=${project_version}" >> "$GITHUB_ENV"
 
       - name: Commit version bump
+        shell: bash
         run: |
           git config user.name "gitea-actions"
           git config user.email "gitea-actions@gitea.local"
+
           git add pom.xml
-          git commit -m "Release ${PROJECT_VERSION} [skip ci]"
-          git push origin main
+
+          if git diff --cached --quiet; then
+            echo "No version changes to commit."
+          else
+            git commit -m "Release ${PROJECT_VERSION} [skip ci]"
+            git push origin main
+          fi
 
       - name: Login to Harbor
+        shell: bash
         run: |
           echo "${{ secrets.HARBOR_PASSWORD }}" | docker login host.docker.internal:8088 \
             -u "${{ secrets.HARBOR_USERNAME }}" \
             --password-stdin
 
       - name: Build image
+        shell: bash
         run: |
           docker build \
             -t host.docker.internal:8088/demo/demo-app:${PROJECT_VERSION} \
@@ -55,25 +66,35 @@ jobs:
             .
 
       - name: Push image
+        shell: bash
         run: |
           docker push host.docker.internal:8088/demo/demo-app:${PROJECT_VERSION}
           docker push host.docker.internal:8088/demo/demo-app:latest
 
       - name: Checkout platform repo
+        shell: bash
         run: |
           git clone http://${{ secrets.PLATFORM_REPO_USERNAME }}:${{ secrets.PLATFORM_REPO_TOKEN }}@host.docker.internal:3000/basuabhi/platform-bgp-lab.git platform-bgp-lab
 
       - name: Update Helm image tag
         working-directory: platform-bgp-lab
+        shell: bash
         run: |
           sed -i.bak "s/tag: \".*\"/tag: \"${PROJECT_VERSION}\"/" demo/demo-app-chart/values.yaml
           rm demo/demo-app-chart/values.yaml.bak
 
       - name: Commit and push chart update
         working-directory: platform-bgp-lab
+        shell: bash
         run: |
           git config user.name "gitea-actions"
           git config user.email "gitea-actions@gitea.local"
+
           git add demo/demo-app-chart/values.yaml
-          git commit -m "Deploy demo-app ${PROJECT_VERSION} [skip ci]"
-          git push origin main
+
+          if git diff --cached --quiet; then
+            echo "No Helm chart changes to commit."
+          else
+            git commit -m "Deploy demo-app ${PROJECT_VERSION} [skip ci]"
+            git push origin main
+          fi
