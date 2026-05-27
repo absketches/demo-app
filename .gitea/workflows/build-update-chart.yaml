@@ -21,11 +21,14 @@ jobs:
         run: |
           project_version="$(date -u '+%Y.%m.%j%H%M')"
 
-          mvn versions:set \
-            -DnewVersion="${project_version}" \
-            -DgenerateBackupPoms=false \
-            -B \
-            -q
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            maven:3.9.9-amazoncorretto-21 \
+            mvn versions:set \
+              -DnewVersion="${project_version}" \
+              -DgenerateBackupPoms=false \
+              -B
 
           echo "project_version=${project_version}" >> "$GITHUB_OUTPUT"
           echo "PROJECT_VERSION=${project_version}" >> "$GITHUB_ENV"
