@@ -12,6 +12,8 @@ import static org.nanonative.nano.services.logging.model.LogLevel.ALL;
 
 public class Main {
     public static void main(String[] args) {
+
+        // Nano app
         final Nano nano = new Nano(Map.of(
                 CONFIG_LOG_LEVEL, ALL,
                 CONFIG_LOG_FORMATTER, "console", // or "json"
